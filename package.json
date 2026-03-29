@@ -1,0 +1,27 @@
+{
+  "name": "atsushi-banhammer-bot",
+  "version": "1.0.0",
+  "description": "A powerful WhatsApp bot inspired , featuring a BanHammer module.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "whatsapp-bot",
+    "baileys",
+    "nodejs",
+    "atsushi",
+    "banhammer"
+  ],
+  "author": "Brad Society",
+  "license": "MIT",
+  "dependencies": {
+    "@adiwajshing/baileys": "^6.5.0",
+    "pino": "^8.16.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
