@@ -1,5 +1,5 @@
 // commands/banhammer.js
-const { sendMessage, isAdmin, isOwner } = require('../utils/baileys-utils');
+const { sendMessage, isAdmin, isOwner, getGroupParticipants } = require('../utils/baileys-utils');
 const { readDB, writeDB } = require('../utils/db-utils');
 const { jidNormalizedUser } = require('@adiwajshing/baileys');
 
@@ -8,21 +8,22 @@ module.exports = {
     commands: [
         {
             name: 'banhammer_add',
-            description: 'Ajoute une victime à la liste de surveillance du BanHammer. Usage: !banhammer_add <numéro> <raison> <type_preuve> <contenu_preuve>',
+            description: 'Ajoute une victime à la liste de surveillance du BanHammer. Usage: !banhammer_add <numéro> <raison> <type_preuve> <contenu_preuve> [groupId]',
             async execute(sock, message, args, config) {
                 if (!isAdmin(message.key.participant || message.key.remoteJid, readDB().admins) && !isOwner(message.key.participant || message.key.remoteJid, config.ownerNumber)) {
                     return sendMessage(sock, message.key.remoteJid, 'Vous n\'avez pas les permissions pour cette commande.');
                 }
 
                 if (args.length < 4) {
-                    return sendMessage(sock, message.key.remoteJid, 'Usage: `!banhammer_add <numéro> <raison> <type_preuve> <contenu_preuve>`');
+                    return sendMessage(sock, message.key.remoteJid, 'Usage: `!banhammer_add <numéro> <raison> <type_preuve> <contenu_preuve> [groupId]`');
                 }
 
                 const victimNumber = args[0].replace(/\D/g, ''); // Nettoie le numéro
                 const victimJid = victimNumber + '@s.whatsapp.net';
                 const reason = args[1];
                 const proofType = args[2];
-                const proofContent = args.slice(3).join(' ');
+                const proofContent = args.slice(3, args.length - (args[args.length - 1].includes('@g.us') ? 1 : 0)).join(' ');
+                const groupId = args[args.length - 1].includes('@g.us') ? args[args.length - 1] : null; // Optionnel: JID du groupe cible
 
                 const db = readDB();
                 if (db.banhammerTargets.some(target => target.jid === victimJid)) {
@@ -34,14 +35,15 @@ module.exports = {
                     reason: reason,
                     proofType: proofType,
                     proofContent: proofContent,
+                    groupId: groupId, // Le groupe où le tagall sera fait
                     status: 'pending', // pending, active, completed, failed
-                    contacts: [], // Potentiellement rempli plus tard
                     delayHours: 0, // Délai avant déclenchement automatique
                     customMessage: `Attention! L'utilisateur ${victimNumber} est impliqué dans une affaire de ${reason}. Voici les preuves: ${proofContent}`,
-                    lastActivity: Date.now() // Pour la détection d'inactivité
+                    lastActivity: Date.now(), // Pour la détection d'inactivité
+                    sessionName: message.sessionName // Associer la cible à la session qui l'a ajoutée ou qui la surveille
                 });
                 writeDB(db);
-                await sendMessage(sock, message.key.remoteJid, `Victime ${victimNumber} ajoutée au BanHammer avec la raison "${reason}".`);
+                await sendMessage(sock, message.key.remoteJid, `Victime ${victimNumber} ajoutée au BanHammer (Session: ${message.sessionName}, Groupe cible: ${groupId || 'aucun'}).`);
             }
         },
         {
@@ -62,6 +64,8 @@ module.exports = {
                     listText += `${index + 1}. Numéro: ${target.jid.split('@')[0]}\n` +
                                 `   Raison: ${target.reason}\n` +
                                 `   Statut: ${target.status}\n` +
+                                `   Groupe cible: ${target.groupId ? target.groupId.split('@')[0] : 'N/A'}\n` +
+                                `   Session: ${target.sessionName}\n` +
                                 `   Preuve: ${target.proofType} - ${target.proofContent.substring(0, 50)}...\n\n`;
                 });
                 await sendMessage(sock, message.key.remoteJid, listText);
@@ -96,19 +100,20 @@ module.exports = {
         },
         {
             name: 'banhammer_trigger',
-            description: 'Déclenche l\'opération BanHammer pour une victime. Usage: !banhammer_trigger <numéro> [mode]',
+            description: 'Déclenche l\'opération BanHammer pour une victime. Usage: !banhammer_trigger <numéro> <groupId> [list_contacts_prives_a_mentionner_et_mp]',
             async execute(sock, message, args, config) {
                 if (!isAdmin(message.key.participant || message.key.remoteJid, readDB().admins) && !isOwner(message.key.participant || message.key.remoteJid, config.ownerNumber)) {
                     return sendMessage(sock, message.key.remoteJid, 'Vous n\'avez pas les permissions pour cette commande.');
                 }
 
-                if (args.length < 1) {
-                    return sendMessage(sock, message.key.remoteJid, 'Usage: `!banhammer_trigger <numéro> [mode]`');
+                if (args.length < 2) {
+                    return sendMessage(sock, message.key.remoteJid, 'Usage: `!banhammer_trigger <numéro> <groupId> [list_contacts_prives_a_mentionner_et_mp (séparés par des virgules)]`');
                 }
 
                 const victimNumber = args[0].replace(/\D/g, '');
                 const victimJid = victimNumber + '@s.whatsapp.net';
-                const mode = args[1] || 'all'; // 'all', 'group:<name>', 'list:<num1,num2>'
+                const groupId = args[1]; // Le groupe où faire le tagall
+                const privateMessageTargets = args.length > 2 ? args[2].split(',').map(num => num.trim().replace(/\D/g, '') + '@s.whatsapp.net') : [];
 
                 const db = readDB();
                 const target = db.banhammerTargets.find(t => t.jid === victimJid);
@@ -124,28 +129,42 @@ module.exports = {
                 // --- Logique de déclenchement BanHammer ---
                 target.status = 'active';
                 writeDB(db);
-                await sendMessage(sock, message.key.remoteJid, `Déclenchement du BanHammer pour ${victimNumber} en mode "${mode}"...`);
+                await sendMessage(sock, message.key.remoteJid, `Déclenchement du BanHammer pour ${victimNumber} dans le groupe ${groupId.split('@')[0]}...`);
 
-                // Ici, tu devrais implémenter la logique d'envoi aux contacts.
-                // Cela est TRÈS complexe car WhatsApp ne fournit pas d'API pour obtenir les contacts d'un utilisateur arbitraire.
-                // Tu devrais avoir une liste de contacts pré-existante ou des contacts du bot qui sont aussi contacts de la victime.
+                // 1. Récupérer tous les participants du groupe
+                const groupParticipants = await getGroupParticipants(sock, groupId);
+                if (groupParticipants.length === 0) {
+                    await sendMessage(sock, message.key.remoteJid, `Impossible de récupérer les participants du groupe ${groupId.split('@')[0]}.`);
+                    target.status = 'failed';
+                    writeDB(db);
+                    return;
+                }
 
-                // Pour cet exemple, nous allons simuler l'envoi à l'opérateur du bot.
-                const simulatedContacts = [message.key.remoteJid]; // Envoie à l'admin pour le test
+                // 2. Préparer le message de tagall
+                let tagallMessage = `*ATTENTION!* L'utilisateur @${victimNumber} est accusé de *${target.reason}*.\n\n`;
+                tagallMessage += `Voici la preuve : ${target.proofContent}\n\n`;
+                tagallMessage += `Merci de prendre les mesures nécessaires.`;
 
-                for (const contactJid of simulatedContacts) {
-                    const messageToSend = target.customMessage || `Attention! L'utilisateur ${victimNumber} est impliqué dans une affaire de ${target.reason}. Voici les preuves: ${target.proofContent}`;
-                    await sendMessage(sock, contactJid, messageToSend);
-                    // Si proofType est 'image', tu pourrais envoyer l'image ici
-                    // if (target.proofType === 'image') {
-                    //     await sendImage(sock, contactJid, target.proofContent, 'Preuve');
-                    // }
-                    console.log(`Message BanHammer envoyé à ${contactJid}`);
+                // 3. Envoyer le tagall
+                await sendMessage(sock, groupId, tagallMessage, groupParticipants);
+                await sendMessage(sock, message.key.remoteJid, `Message de tagall envoyé dans le groupe ${groupId.split('@')[0]}.`);
+
+                // 4. Envoyer des messages privés aux cibles spécifiques
+                if (privateMessageTargets.length > 0) {
+                    await sendMessage(sock, message.key.remoteJid, `Envoi de messages privés à ${privateMessageTargets.length} contacts...`);
+                    for (const pmTargetJid of privateMessageTargets) {
+                        const pmMessage = `*Alerte Privée :* Concernant l'utilisateur @${victimNumber} (${victimJid.split('@')[0]}), les accusations de *${target.reason}* sont sérieuses.\n\nPreuve : ${target.proofContent}\n\nAgissez discrètement.`;
+                        await sendMessage(sock, pmTargetJid, pmMessage, [victimJid]); // Mentionner la victime dans le MP aussi
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Délai pour éviter le flood
+                    }
+                    await sendMessage(sock, message.key.remoteJid, `Messages privés envoyés aux cibles spécifiées.`);
+                } else {
+                    await sendMessage(sock, message.key.remoteJid, `Aucune cible de message privé spécifiée.`);
                 }
 
                 target.status = 'completed';
                 writeDB(db);
-                await sendMessage(sock, message.key.remoteJid, `Opération BanHammer pour ${victimNumber} terminée (simulée).`);
+                await sendMessage(sock, message.key.remoteJid, `Opération BanHammer pour ${victimNumber} terminée.`);
             }
         },
         {
@@ -173,6 +192,8 @@ module.exports = {
                 const statusText = `*Statut BanHammer pour ${victimNumber}:*\n` +
                                    `Raison: ${target.reason}\n` +
                                    `Statut: ${target.status}\n` +
+                                   `Groupe cible: ${target.groupId ? target.groupId.split('@')[0] : 'N/A'}\n` +
+                                   `Session: ${target.sessionName}\n` +
                                    `Dernière activité: ${new Date(target.lastActivity).toLocaleString()}\n` +
                                    `Délai d'inactivité: ${target.delayHours} heures\n`;
                 await sendMessage(sock, message.key.remoteJid, statusText);
@@ -238,8 +259,5 @@ module.exports = {
                 await sendMessage(sock, message.key.remoteJid, `Message personnalisé pour ${victimNumber} mis à jour.`);
             }
         },
-        // Note: banhammer_contacts est complexe. WhatsApp ne permet pas de récupérer les contacts d'un tiers.
-        // Cela nécessiterait des techniques d'ingénierie sociale ou des exploits non liés à l'API Baileys standard.
-        // Pour une implémentation réaliste, tu devrais avoir une liste de contacts à cibler que tu aurais obtenue par d'autres moyens.
     ]
 };
