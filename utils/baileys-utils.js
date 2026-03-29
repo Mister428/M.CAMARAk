@@ -6,9 +6,10 @@ const { jidNormalizedUser, isJidGroup, get  } = require('@adiwajshing/baileys');
  * @param {import('@adiwajshing/baileys').WASocket} sock
  * @param {string} jid
  * @param {string} text
+ * @param {Array<string>} [mentions] - JIDs à mentionner
  */
-async function sendMessage(sock, jid, text) {
-    await sock.sendMessage(jid, { text: text });
+async function sendMessage(sock, jid, text, mentions = []) {
+    await sock.sendMessage(jid, { text: text, mentions: mentions });
 }
 
 /**
@@ -54,10 +55,27 @@ function isOwner(jid, ownerNumber) {
     return normalizedJid.startsWith(ownerNumber);
 }
 
+/**
+ * Récupère les participants d'un groupe.
+ * @param {import('@adiwajshing/baileys').WASocket} sock
+ * @param {string} groupId - Le JID du groupe.
+ * @returns {Array<string>} Liste des JIDs des participants.
+ */
+async function getGroupParticipants(sock, groupId) {
+    try {
+        const metadata = await sock.groupMetadata(groupId);
+        return metadata.participants.map(p => p.id);
+    } catch (error) {
+        console.error(`Erreur lors de la récupération des participants du groupe ${groupId}:`, error);
+        return [];
+    }
+}
+
 module.exports = {
     sendMessage,
     sendImage,
     sendSticker,
     isAdmin,
     isOwner,
+    getGroupParticipants,
 };
