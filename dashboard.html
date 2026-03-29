@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atsushi-Bot Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: #2a2a4a;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            width: 90%;
+            max-width: 1000px;
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #e94560;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #3a3a5a;
+            border-radius: 8px;
+        }
+        .section h3 {
+            color: #0f3460;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a0a0a0;
+        }
+        input[type="text"], input[type="number"], textarea, select {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #0f3460;
+            border-radius: 5px;
+            background-color: #16213e;
+            color: #e0e0e0;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #e94560;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #b83f55;
+        }
+        .status-box {
+            background-color: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+        .target-list {
+            list-style: none;
+            padding: 0;
+        }
+        .target-item {
+            background-color: #16213e;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column; /* Changed to column for better layout on smaller screens */
+            gap: 10px;
+        }
+        .target-item span {
+            flex: 1;
+            /* margin-right: 10px; */ /* Removed as flex-direction is column */
+            min-width: 150px;
+        }
+        .target-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .api-key-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #e94560;
+            border-radius: 5px;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Atsushi-Bot Dashboard</h1>
+
+        <div class="section">
+            <h3>Configuration API</h3>
+            <label for="apiKey">Clé API (YOUR_SUPER_SECRET_API_KEY):</label>
+            <input type="text" id="apiKey" class="api-key-input" value="YOUR_SUPER_SECRET_API_KEY">
+            <p style="color: #e94560;">*N'oubliez pas de changer la clé API dans config.js et ici.*</p>
+        </div>
+
+        <div class="section">
+            <h3>Statut du Bot</h3>
+            <button onclick="getBotStatus()">Actualiser le Statut</button>
+            <div id="botStatus" class="status-box">Chargement du statut...</div>
+        </div>
+
+        <div class="section">
+            <h3>Ajouter une Cible BanHammer</h3>
+            <label for="addVictimNumber">Numéro de la Victime (ex: 2250700000000):</label>
+            <input type="text" id="addVictimNumber" placeholder="Numéro WhatsApp sans le +">
+
+            <label for="addReason">Raison du Ban:</label>
+            <input type="text" id="addReason" placeholder="Ex: arnaque, harcèlement">
+
+            <label for="addProofType">Type de Preuve:</label>
+            <select id="addProofType">
+                <option value="texte">Texte</option>
+                <option value="image">Image (URL)</option>
+                <option value="lien">Lien</option>
+            </select>
+
+            <label for="addProofContent">Contenu de la Preuve:</label>
+            <textarea id="addProofContent" rows="3" placeholder="Texte de la preuve ou URL de l'image"></textarea>
+
+            <label for="addGroupId">JID du Groupe Cible (ex: 1234567890-123456@g.us, optionnel):</label>
+            <input type="text" id="addGroupId" placeholder="JID du groupe pour le tagall">
+
+            <label for="addSessionName">Session du Bot à utiliser:</label>
+            <select id="addSessionName"></select> <!-- Rempli par JS -->
+
+            <button onclick="addBanhammerTarget()">Ajouter Cible</button>
+            <div id="addResult" class="status-box"></div>
+        </div>
+
+        <div class="section">
+            <h3>Cibles BanHammer Actives</h3>
+            <button onclick="getBanhammerTargets()">Actualiser les Cibles</button>
+            <ul id="banhammerTargetsList" class="target-list">
+                <li>Chargement des cibles...</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api'; // Assurez-vous que c'est le bon port
+
+        function getApiKey() {
+            return document.getElementById('apiKey').value;
+        }
+
+        async function fetchData(url, options = {}) {
+            const apiKey = getApiKey();
+            if (!apiKey) {
+                alert('Veuillez entrer la clé API.');
+                return null;
+            }
+            options.headers = {
+                ...options.headers,
+                'X-API-KEY': apiKey,
+                'Content-Type': 'application/json'
+            };
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Erreur HTTP: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Erreur de fetch:', error);
+                alert('Erreur: ' + error.message);
+                return null;
+            }
+        }
+
+        async function getBotStatus() {
+            const statusDiv = document.getElementById('botStatus');
+            statusDiv.textContent = 'Chargement du statut...';
+            const status = await fetchData(`${API_BASE_URL}/status`);
+            if (status) {
+                statusDiv.textContent = JSON.stringify(status, null, 2);
+
+                // Remplir le sélecteur de session
+                const sessionSelect = document.getElementById('addSessionName');
+                sessionSelect.innerHTML = '';
+                for (const sessionName in status.sessions) {
+                    const option = document.createElement('option');
+                    option.value = sessionName;
+                    option.textContent = `${sessionName} (${status.sessions[sessionName].status})`;
+                    sessionSelect.appendChild(option);
+                }
+
+            } else {
+                statusDiv.textContent = 'Impossible de récupérer le statut.';
+            }
+        }
+
+        async function addBanhammerTarget() {
+            const victimNumber = document.getElementById('addVictimNumber').value;
+            const reason = document.getElementById('addReason').value;
+            const proofType = document.getElementById('addProofType').value;
+            const proofContent = document.getElementById('addProofContent').value;
+            const groupId = document.getElementById('addGroupId').value;
+            const sessionName = document.getElementById('addSessionName').value;
+            const addResultDiv = document.getElementById('addResult');
+
+            addResultDiv.textContent = 'Ajout en cours...';
+
+            const data = { victimNumber, reason, proofType, proofContent, groupId, sessionName };
+            const result = await fetchData(`${API_BASE_URL}/banhammer/add`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            if (result) {
+                addResultDiv.textContent = JSON.stringify(result, null, 2);
+                getBanhammerTargets(); // Actualiser la liste
+            } else {
+                addResultDiv.textContent = 'Échec de l\'ajout.';
+            }
+        }
+
+        async function getBanhammerTargets() {
+            const listUl = document.getElementById('banhammerTargetsList');
+            listUl.innerHTML = '<li>Chargement des cibles...</li>';
+            const targets = await fetchData(`${API_BASE_URL}/banhammer/targets`);
+            if (targets) {
+                listUl.innerHTML = '';
+                if (targets.length === 0) {
+                    listUl.innerHTML = '<li>Aucune cible BanHammer active.</li>';
+                    return;
+                }
+                targets.forEach(target => {
+                    const li = document.createElement('li');
+                    li.className = 'target-item';
+                    li.innerHTML = `
+                        <span>Victime: ${target.jid.split('@')[0]}</span>
+                        <span>Raison: ${target.reason}</span>
+                        <span>Statut: ${target.status}</span>
+                        <span>Groupe cible: ${target.groupId ? target.groupId.split('@')[0] : 'N/A'}</span>
+                        <span>Session: ${target.sessionName}</span>
+                        <div class="target-actions">
+                            <input type="text" id="pmContacts-${target.jid}" placeholder="Contacts MP (ex: 22507...,22508...)">
+                            <button onclick="triggerBanhammer('${target.jid.split('@')[0]}', '${target.groupId}', '${target.sessionName}')">Déclencher</button>
+                        </div>
+                    `;
+                    listUl.appendChild(li);
+                });
+            } else {
+                listUl.innerHTML = '<li>Impossible de récupérer les cibles.</li>';
+            }
+        }
+
+        async function triggerBanhammer(victimNumber, groupId, sessionName) {
+            if (!groupId || groupId === 'N/A') {
+                alert('Veuillez d\'abord spécifier un JID de groupe pour cette cible.');
+                return;
+            }
+            if (!confirm(`Êtes-vous sûr de vouloir déclencher le BanHammer pour ${victimNumber} dans le groupe ${groupId} via la session ${sessionName}?`)) {
+                return;
+            }
+
+            const pmContactsInput = document.getElementById(`pmContacts-${victimNumber}`);
+            const privateMessageTargets = pmContactsInput.value.split(',').map(c => c.trim()).filter(c => c);
+
+            const result = await fetchData(`${API_BASE_URL}/banhammer/trigger`, {
+                method: 'POST',
+                body: JSON.stringify({ victimNumber: victimNumber, groupId: groupId, privateMessageTargets: privateMessageTargets, sessionName: sessionName })
+            });
+            if (result) {
+                alert(`Déclenchement pour ${victimNumber}: ${result.message}`);
+                getBanhammerTargets(); // Actualiser la liste
+            } else {
+                alert(`Échec du déclenchement pour ${victimNumber}.`);
+            }
+        }
+
+        // Charger le statut et les cibles au démarrage
+        document.addEventListener('DOMContentLoaded', () => {
+            getBotStatus();
+            getBanhammerTargets();
+        });
+    </script>
+</body>
+</html>
